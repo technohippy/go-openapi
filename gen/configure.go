@@ -1,7 +1,7 @@
 package gen
 
 import (
-	//"fmt"
+	"fmt"
 	yaml "gopkg.in/yaml.v2"
 	"io/ioutil"
 )
@@ -77,15 +77,15 @@ type ServerVariableObject struct {
 }
 
 type ComponentsObject struct {
-	Schemas         map[string]SchemaOrRefObject    `yaml:"schemas,omitempty"`
-	Responses       map[string]interface{}          `yaml:"responses,omitempty"` // ResponseObject or ReferenceObject
-	Parameters      map[string]ParameterOrRefObject `yaml:"parameters,omitempty"`
-	Examples        map[string]interface{}          `yaml:"examples,omitempty"`      // ExampleObject or ReferenceObject
-	RequestBodies   map[string]interface{}          `yaml:"requestBodies,omitempty"` // RequestBodyObject or ReferenceObject
-	Headers         map[string]HeaderOrRefObject    `yaml:"headers,omitempty"`
-	SecuritySchemes map[string]interface{}          `yaml:"securitySchemes,omitempty"` // SecuritySchemeObject or ReferenceObject
-	Links           map[string]interface{}          `yaml:"links,omitempty"`           // LinkObject or ReferenceObject
-	Callbacks       map[string]interface{}          `yaml:"callbacks,omitempty"`       // CallbackObject or ReferenceObject
+	Schemas         map[string]SchemaOrRefObject         `yaml:"schemas,omitempty"`
+	Responses       map[string]ResponseOrRefObject       `yaml:"responses,omitempty"`
+	Parameters      map[string]ParameterOrRefObject      `yaml:"parameters,omitempty"`
+	Examples        map[string]ExampleOrRefObject        `yaml:"examples,omitempty"`
+	RequestBodies   map[string]RequestBodyOrRefObject    `yaml:"requestBodies,omitempty"`
+	Headers         map[string]HeaderOrRefObject         `yaml:"headers,omitempty"`
+	SecuritySchemes map[string]SecuritySchemeOrRefObject `yaml:"securitySchemes,omitempty"`
+	Links           map[string]LinkOrRefObject           `yaml:"links,omitempty"`
+	Callbacks       map[string]CallbackOrRefObject       `yaml:"callbacks,omitempty"`
 }
 
 type PathItemObject struct {
@@ -136,15 +136,17 @@ func (o PathItemObject) OperationTemplateVariable(path string) map[string]interf
 	operationValue := map[string]interface{}{}
 	operationValue["responseHeaders"] = []interface{}{}
 	opType, op := o.Operation()
+	fmt.Sprintf("%v", opType)
 	if op != nil {
 		operationValue["hasProduces"] = true
-		operationValue["produces"] = []interface{}{}
+		produces := []map[string]interface{}{}
 		for _, produce := range op.Produces() {
-			operationValue["produces"] = append(operationValue["produces"], map[string]interface{}{
+			operationValue["produces"] = append(produces, map[string]interface{}{
 				"hasMore":   true,
 				"mediaType": produce})
 		}
-		operationValue["produces"][len(operationValue["produces"])-1]["hasMore"] = false
+		produces[len(produces)-1]["hasMore"] = false
+		operationValue["produces"] = produces
 	}
 
 	// TODO
@@ -159,9 +161,9 @@ type OperationObject struct {
 	ExternalDocs ExternalDocumentationObject    `yaml:"externalDocs,omitempty"`
 	OperationId  string                         `yaml:"operationId,omitempty"`
 	Parameters   []ParameterOrRefObject         `yaml:"parameters,omitempty"`
-	RequestBody  interface{}                    `yaml:"requestBody,omitempty"` // RequestBodyObject or ReferenceObject
+	RequestBody  RequestBodyOrRefObject         `yaml:"requestBody,omitempty"`
 	Responses    map[string]ResponseOrRefObject `yaml:"responses,omitempty"`
-	Callbacks    map[string]interface{}         `yaml:"callbacks,omitempty"` // CallbackObject or ReferenceObject
+	Callbacks    map[string]CallbackOrRefObject `yaml:"callbacks,omitempty"`
 	Deprecated   bool                           `yaml:"deprecated,omitempty"`
 	Security     []SecurityRequirementObject    `yaml:"securty,omitempty"`
 	Servers      []ServerObject                 `yaml:"servers,omitempty"`
@@ -215,6 +217,14 @@ type ParameterOrRefObject struct {
 	Examples      map[string]ExampleOrRefObject `yaml:"examples,omitempty"`
 }
 
+type RequestBodyOrRefObject struct {
+	Ref string `yaml:"$ref,omitempty"`
+
+	Description string                     `yaml:"description,omitempty"`
+	Content     map[string]MediaTypeObject `yaml:"content,omitempty"`
+	Required    bool                       `yaml:"required1,omitempty"`
+}
+
 type MediaTypeObject struct {
 	Schema   SchemaOrRefObject             `yaml:"schema,omitempty"`
 	Example  interface{}                   `yaml:"example,omitempty"`
@@ -244,6 +254,11 @@ func (r ResponseOrRefObject) Produce() string {
 		return produce
 	}
 	return ""
+}
+
+type CallbackOrRefObject struct {
+	PathItemObject
+	Ref string `yaml:"$ref,omitempty"`
 }
 
 type ExampleOrRefObject struct {
@@ -282,6 +297,33 @@ type SchemaOrRefObject struct {
 
 	Type string `yaml:"type,omitempty"`
 	// TODO:
+}
+
+type SecuritySchemeOrRefObject struct {
+	Ref string `yaml:"$ref,omitempty"`
+
+	Type             string           `yaml:"type,omitempty"`
+	Description      string           `yaml:"description,omitempty"`
+	Name             string           `yaml:"name,omitempty"`
+	In               string           `yaml:"in,omitempty"`
+	Scheme           string           `yaml:"scheme,omitempty"`
+	BearerFormat     string           `yaml:"bearerFormat,omitempty"`
+	Flows            OAuthFlowsObject `yaml:"flows,omitempty"`
+	OpenIdConnectUrl string           `yaml:"openIdConnectUrl,omitempty"`
+}
+
+type OAuthFlowsObject struct {
+	Implicit          OAuthFlowObject `yaml:"implicit,omitempty"`
+	Password          OAuthFlowObject `yaml:"password,omitempty"`
+	ClientCredentials OAuthFlowObject `yaml:"clientCredentials,omitempty"`
+	AuthorizationCode OAuthFlowObject `yaml:"authorizationCode,omitempty"`
+}
+
+type OAuthFlowObject struct {
+	AuthorizationUrl string            `yaml:"authorizationUrl,omitempty"`
+	TokenUrl         string            `yaml:"tokenUrl,omitempty"`
+	RefreshUrl       string            `yaml:"refreshUrl,omitempty"`
+	Scopes           map[string]string `yaml:"scopes,omitempty"`
 }
 
 type SecurityRequirementObject struct {
