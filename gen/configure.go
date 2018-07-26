@@ -1,9 +1,10 @@
 package gen
 
 import (
-	"fmt"
+	//"fmt"
 	yaml "gopkg.in/yaml.v2"
 	"io/ioutil"
+	"strings"
 )
 
 func ReadConfig(filepath string) (*OpenAPIObject, error) {
@@ -27,13 +28,54 @@ type OpenAPIObject struct {
 	ExternalDocs ExternalDocumentationObject `yaml:"externalDocs,omitempty"`
 }
 
-func (o *OpenAPIObject) OperationTemplateVariable() map[string]interface{} {
-	operationValue := []map[string]interface{}{}
-	for path, pathItem := range o.Paths {
-		operationValue = append(operationValue, pathItem.OperationTemplateVariable(path))
+func (o *OpenAPIObject) TemplateVariables() map[string]interface{} {
+	variables := map[string]interface{}{
+		"packageName":    "swagger", // TODO
+		"hasImport":      false,     // TODO
+		"modelPackage":   "TODO:modelPackage",
+		"package":        "TODO:package",
+		"clientPackage":  "TODO:clientPackage",
+		"version":        "TODO:version",
+		"classVarName":   "TODO:classVarName",
+		"basePath":       "TODO:basePath",
+		"packageVersion": o.Info.Version,       // TODO
+		"infoEmail":      o.Info.Contact.Email, // TODO
+		"importPath":     "TODO:importPath",
+		"licenceInfo":    o.Info.License.Name,
+		"hasMore":        false, // TODO
+		"generatedDate":  "TODO:generatedDate",
+		"classname":      "TODO:classname",
+		"imports": []map[string]string{{
+			"import": "TODO:import",
+		}},
+		"appName":        o.Info.Title,
+		"appVersion":     o.Info.Version,
+		"generatorClass": "gen/generator.go",
+		"baseName":       "TODO:baseName",
+		"contextPath":    "TODO:contextPath",
+		"apiInfo": map[string]interface{}{
+			"apis": map[string]interface{}{
+				"operations": o.OperationsTemplateVariables(),
+				"hasMore":    false,
+			},
+		},
+		"models":      o.ModelsTemplateVariables(),
+		"authMethods": []interface{}{},
 	}
-	operationsValue := map[string]interface{}{"operation": operationValue}
-	return operationsValue // TODO
+	return variables
+}
+
+func (o *OpenAPIObject) OperationsTemplateVariables() map[string]interface{} {
+	operationVariables := []map[string]interface{}{}
+	for path, pathItem := range o.Paths {
+		operationVariables = append(operationVariables, pathItem.OperationTemplateVariables(path))
+	}
+	operationsVariables := map[string]interface{}{"operation": operationVariables}
+	return operationsVariables
+}
+
+func (o *OpenAPIObject) ModelsTemplateVariables() map[string]interface{} {
+	return map[string]interface{}{}
 }
 
 func (o *OpenAPIObject) Yaml() (string, error) {
@@ -132,26 +174,127 @@ func (o PathItemObject) Operation() (string, *OperationObject) {
 	return "error", nil
 }
 
-func (o PathItemObject) OperationTemplateVariable(path string) map[string]interface{} {
+// https://github.com/swagger-api/swagger-codegen/wiki/Mustache-Template-Variables
+func (o PathItemObject) OperationTemplateVariables(path string) map[string]interface{} {
 	operationValue := map[string]interface{}{}
 	operationValue["responseHeaders"] = []interface{}{}
 	opType, op := o.Operation()
-	fmt.Sprintf("%v", opType)
 	if op != nil {
-		operationValue["hasProduces"] = true
 		produces := []map[string]interface{}{}
 		for _, produce := range op.Produces() {
-			operationValue["produces"] = append(produces, map[string]interface{}{
+			produces = append(produces, map[string]interface{}{
 				"hasMore":   true,
 				"mediaType": produce})
 		}
 		produces[len(produces)-1]["hasMore"] = false
+
+		operationValue["hasProduces"] = true
+		if 0 < len(op.Parameters) {
+			operationValue["hasParams"] = true
+		}
+		operationValue["hasMore"] = true // last one must be false
+		mediaType := produces[0]["mediaType"].(string)
+		operationValue["isResponseBinary"] = strings.HasPrefix(mediaType, "image/") ||
+			strings.HasPrefix(mediaType, "audio/") ||
+			strings.HasPrefix(mediaType, "video/") ||
+			strings.HasPrefix(mediaType, "application/octet-stream")
+		operationValue["path"] = path
+		operationValue["operationId"] = op.OperationId
+		operationValue["httpMethod"] = opType
+		operationValue["summary"] = op.Summary
+		operationValue["notes"] = op.Description
+		operationValue["baseName"] = "" // TODO
 		operationValue["produces"] = produces
+		bodyParams := []map[string]interface{}{}
+		formParams := []map[string]interface{}{}
+		pathParams := []map[string]interface{}{}
+		queryParams := []map[string]interface{}{}
+		headerParams := []map[string]interface{}{}
+		for _, param := range op.Parameters {
+			var params []map[string]interface{}
+			isBodyParam := false
+			switch param.In {
+			case "body":
+				params = bodyParams
+				isBodyParam = true
+			case "form":
+				params = formParams
+			case "path":
+				params = pathParams
+			case "query":
+				params = queryParams
+			case "header":
+				params = headerParams
+			}
+			prm := map[string]interface{}{
+				"isBodyParam":      isBodyParam,
+				"baseName":         param.Name,
+				"paramName":        param.Name,
+				"dataType":         opType, // TODO: is it ok?
+				"description":      param.Description,
+				"jsonSchema":       "",
+				"isEnum":           false,
+				"vendorExtensions": nil,
+				"required":         param.Required,
+			}
+			params = append(params, prm)
+		}
+		if 0 < len(bodyParams) {
+			operationValue["bodyParam"] = bodyParams[0]
+			operationValue["bodyParams"] = bodyParams
+			operationValue["hasBodyParam"] = true
+			operationValue["hasBodyParams"] = true
+		}
+		if 0 < len(formParams) {
+			operationValue["formParams"] = formParams
+			operationValue["hasFormParams"] = true
+		}
+		if 0 < len(pathParams) {
+			operationValue["pathParams"] = pathParams
+			operationValue["hasPathParams"] = true
+		}
+		if 0 < len(queryParams) {
+			operationValue["queryParams"] = queryParams
+			operationValue["hasQueryParams"] = true
+		}
+		if 0 < len(headerParams) {
+			operationValue["headerParams"] = headerParams
+			operationValue["hasHeaderParams"] = true
+		}
+		allParams := []map[string]interface{}{}
+		allParams = append(allParams, bodyParams...)
+		allParams = append(allParams, formParams...)
+		allParams = append(allParams, pathParams...)
+		allParams = append(allParams, queryParams...)
+		allParams = append(allParams, headerParams...)
+		operationValue["allParams"] = allParams
+		operationValue["tags"] = op.Tags
+		responses := []map[string]interface{}{}
+		for code, response := range op.Responses {
+			resp := map[string]interface{}{
+				"headers":         response.Headers,
+				"code":            code,
+				"message":         response.Description,
+				"hasMore":         true,
+				"isDefault":       code == "default",
+				"simpleType":      true,  // TODO
+				"primitiveType":   true,  // TODO
+				"isMapContainer":  false, // TODO
+				"isListContainer": false, // TODO
+				"isBinary":        false, // TODO
+				"jsonSchema":      "{}",  // TODO
+				"wildcard":        true,  // TODO
+			}
+			responses = append(responses, resp)
+		}
+		responses[len(responses)-1]["hasMore"] = false
+		operationValue["responses"] = responses
+		operationValue["imports"] = ""           // TODO
+		operationValue["vendorExtensions"] = nil // TODO
+		operationValue["nickname"] = ""          // TODO
 	}
 
-	// TODO
-
-	return nil
+	return operationValue // TODO
 }
 
 type OperationObject struct {
@@ -186,7 +329,7 @@ func (o *OperationObject) Produces() []string {
 					break
 				}
 			}
-			if found {
+			if !found {
 				produces = append(produces, produce)
 			}
 		}
@@ -257,8 +400,9 @@ func (r ResponseOrRefObject) Produce() string {
 }
 
 type CallbackOrRefObject struct {
-	PathItemObject
 	Ref string `yaml:"$ref,omitempty"`
+
+	PathItemObject
 }
 
 type ExampleOrRefObject struct {
